@@ -1,0 +1,38 @@
+---
+import RoleForm from "../components/RoleForm.astro";
+import Layout from "../layouts/Layout.astro";
+import { saveUser } from "../lib/db";
+import { getSession } from "../lib/session";
+
+const session = getSession(Astro.cookies);
+if (!session || session.kind === "central") return Astro.redirect("/");
+if (session.kind === "new") return Astro.redirect("/setup/");
+
+let { isStudent, isStaff, hasEap } = session.user;
+let error = "";
+let saved = Astro.url.searchParams.has("saved");
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  isStudent = form.has("student");
+  isStaff = form.has("staff");
+  hasEap = form.has("eap");
+  if (!isStudent && !isStaff) {
+    error = "Choose student, staff, or both.";
+    saved = false;
+    Astro.response.status = 400;
+  } else {
+    saveUser({ uid: session.uid, isStudent, isStaff, hasEap });
+    return Astro.redirect("/profile/?saved", 303);
+  }
+}
+---
+
+<Layout title="My data">
+  <section class="narrow">
+    <h1>My data</h1>
+    <p class="lede">Signed in as <strong>{session.uid}</strong>.</p>
+    {saved && <p class="callout ok" role="status">Saved.</p>}
+    <RoleForm isStudent={isStudent} isStaff={isStaff} hasEap={hasEap} submit="Save changes" error={error} />
+  </section>
+</Layout>

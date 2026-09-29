@@ -1,0 +1,60 @@
+---
+import { getSession } from "../lib/session";
+import "../styles.css";
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+const session = getSession(Astro.cookies);
+const path = Astro.url.pathname;
+const current = (href: string) =>
+  (href === "/" ? path === "/" : path.startsWith(href)) ? "page" : undefined;
+---
+
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} · Extension requests</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="bar">
+        <a class="brand" href="/">Extension requests</a>
+        <nav aria-label="site">
+          <a href="/" aria-current={current("/")}>Home</a>
+          {session?.kind === "user" && (
+            <a href="/profile/" aria-current={current("/profile/")}>My data</a>
+          )}
+          {session?.kind === "user" && session.side === "student" && (
+            <a href="/request/" aria-current={current("/request/")}>New request</a>
+          )}
+          {session?.kind === "user" && session.side === "staff" && (
+            <a href="/courses/" aria-current={current("/courses/")}>Courses</a>
+          )}
+          {session?.kind === "central" && (
+            <a href="/central/" aria-current={current("/central/")}>ECA queue</a>
+          )}
+          <a href="/readme/" aria-current={current("/readme/")}>About</a>
+          {session && (
+            <form method="post" action="/logout" class="inline">
+              <button class="link">Log out {session.uid}</button>
+            </form>
+          )}
+        </nav>
+      </div>
+    </header>
+    <main>
+      <slot />
+    </main>
+    <footer class="site-footer">
+      <p>
+        A COMP4020 student prototype — not an official ANU system. Nothing submitted
+        here reaches your course or the University.
+      </p>
+    </footer>
+  </body>
+</html>

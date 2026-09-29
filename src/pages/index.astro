@@ -1,53 +1,177 @@
 ---
-import { listMessages } from "../lib/db";
-import "../styles.css";
+import RequestTable from "../components/RequestTable.astro";
+import Layout from "../layouts/Layout.astro";
+import { coursesForStaff, requestsForStaff, requestsForStudent } from "../lib/db";
+import { getSession, logIn, normaliseUid, setSide } from "../lib/session";
 
-const messages = listMessages();
+// "/" is the login page when signed out and the homepage when signed in.
+let error = "";
+let uidValue = "";
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const action = String(form.get("action") ?? "");
+  if (action === "login") {
+    uidValue = String(form.get("uid") ?? "");
+    const uid = normaliseUid(uidValue);
+    if (!uid) {
+      error = "Enter your UID: a lowercase u followed by seven digits, e.g. u7654321.";
+      Astro.response.status = 400;
+    } else {
+      logIn(Astro.cookies, uid);
+      return Astro.redirect("/", 303);
+    }
+  } else if (action === "side") {
+    const side = form.get("side");
+    if (side === "student" || side === "staff") setSide(Astro.cookies, side);
+    return Astro.redirect("/", 303);
+  } else {
+    Astro.response.status = 400;
+  }
+}
+
+const session = getSession(Astro.cookies);
+if (session?.kind === "central") return Astro.redirect("/central/");
+if (session?.kind === "new") return Astro.redirect("/setup/");
+
+const both = session?.kind === "user" && session.user.isStudent && session.user.isStaff;
+const side = session?.kind === "user" ? session.side : null;
+const mine = session?.kind === "user" && side === "student" ? requestsForStudent(session.uid) : [];
+const staffCourses = session?.kind === "user" && side === "staff" ? coursesForStaff(session.uid) : [];
+const incoming = session?.kind === "user" && side === "staff" ? requestsForStaff(session.uid) : [];
+const pending = incoming.filter((r) => r.status === "pending");
 ---
 
-<!doctype html>
-<html lang="en-AU">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>COMP4020 prototype</title>
-  </head>
-  <body>
-    <nav aria-label="site">
-      <a href="/">Guestbook</a>
-      <a href="/readme/">About</a>
-    </nav>
-    <main>
-      <h1>Guestbook</h1>
-      <p>
-        A minimal full-stack starter: messages live in SQLite on the machine's
-        volume (state survives a reload and a redeploy), and new messages
-        appear in every open tab over a server-sent-events stream — open this
-        page twice and sign it in one. Replace all of this with your own
-        prototype.
-      </p>
-      <form method="post" action="/api/messages">
-        <label for="body">Leave a message</label>
-        <input id="body" name="body" required maxlength="500" />
-        <button>Sign</button>
-      </form>
-      <ul id="messages">
-        {messages.map((message) => <li>{message.body}</li>)}
-      </ul>
-    </main>
-    <script>
-      // The live half of the demo: subscribe to the SSE stream and prepend
-      // messages as they arrive. The form itself needs none of this — its
-      // POST + redirect re-renders the submitting tab from SQLite; this
-      // stream is how every other tab finds out.
-      const list = document.querySelector("#messages");
-      const source = new EventSource("/api/events");
-      source.addEventListener("message", (event) => {
-        const message = JSON.parse(event.data);
-        const item = document.createElement("li");
-        item.textContent = message.body;
-        list?.prepend(item);
-      });
-    </script>
-  </body>
-</html>
+<Layout title={session ? "Home" : "Log in"}>
+  {
+    !session && (
+      <section class="narrow">
+        <h1>Assessment extension requests</h1>
+        <p class="lede">
+          Ask for more time on an assessment, or, as course staff, manage your courses and
+          decide requests.
+        </p>
+        <form method="post" class="panel stack" novalidate>
+          <input type="hidden" name="action" value="login" />
+          <div class="field">
+            <label for="uid">Your UID</label>
+            <p class="hint" id="uid-hint">
+              The u-number on your ANU card, e.g. u7654321. There's no password in this
+              prototype.
+            </p>
+            <input
+              id="uid"
+              name="uid"
+              required
+              autocomplete="username"
+              autocapitalize="none"
+              spellcheck="false"
+              pattern="[uU][0-9]{7}|CENTRAL|central"
+              aria-describedby={error ? "uid-hint uid-error" : "uid-hint"}
+              aria-invalid={error ? "true" : undefined}
+              value={uidValue}
+            />
+            {error && (
+              <p class="error" id="uid-error">
+                {error}
+              </p>
+            )}
+          </div>
+          <div class="actions">
+            <button>Continue</button>
+          </div>
+        </form>
+      </section>
+    )
+  }
+
+  {
+    session?.kind === "user" && (
+      <>
+        <h1>Welcome, {session.uid}</h1>
+        {both && (
+          <form method="post" aria-label="Choose which side to view">
+            <input type="hidden" name="action" value="side" />
+            <p class="hint" id="side-hint">
+              You're both a student and staff. Which side do you want to see?
+            </p>
+            <div class="side-switch" role="group" aria-describedby="side-hint">
+              <button name="side" value="student" aria-pressed={side === "student" ? "true" : "false"}>
+                Student side
+              </button>
+              <button name="side" value="staff" aria-pressed={side === "staff" ? "true" : "false"}>
+                Staff side
+              </button>
+            </div>
+          </form>
+        )}
+
+        {side === "student" && (
+          <>
+            <div class="choices">
+              <a class="choice big" href="/profile/">
+                <strong>Change my data</strong>
+                <span>Student or staff, and whether you have an Education Access Plan.</span>
+              </a>
+              <a class="choice big" href="/request/">
+                <strong>Submit an extension request</strong>
+                <span>Automatic short extension, short extension, or an ECA.</span>
+              </a>
+            </div>
+            <h2>My requests</h2>
+            <RequestTable rows={mine} empty="You haven't made any requests yet." />
+          </>
+        )}
+
+        {side === "staff" && (
+          <>
+            <div class="choices">
+              <a class="choice big" href="/profile/">
+                <strong>Change my data</strong>
+                <span>Student or staff, and whether you have an Education Access Plan.</span>
+              </a>
+              <a class="choice big" href="/courses/">
+                <strong>Manage my courses</strong>
+                <span>
+                  {staffCourses.length === 0
+                    ? "Create a course, add assignments and staff."
+                    : `${staffCourses.length} course${staffCourses.length === 1 ? "" : "s"}: ${staffCourses.map((c) => c.code).join(", ")}`}
+                </span>
+              </a>
+            </div>
+            <p class="live-banner callout staff" id="live" hidden>
+              New requests have arrived. <a href="/">Refresh the list</a>.
+            </p>
+            <h2>Requests waiting for a decision ({pending.length})</h2>
+            <RequestTable
+              rows={pending}
+              showStudent
+              empty="Nothing waiting. Short extensions for your courses appear here."
+            />
+            <h2>All requests for my courses</h2>
+            <p class="hint">
+              ECAs aren't shown here. The central team handles them, and they may contain
+              confidential medical information.
+            </p>
+            <RequestTable
+              rows={incoming}
+              showStudent
+              empty="No requests yet for your courses."
+            />
+          </>
+        )}
+      </>
+    )
+  }
+</Layout>
+
+<script>
+  // Staff side: a new request anywhere raises a quiet "refresh" banner.
+  const banner = document.querySelector<HTMLElement>("#live");
+  if (banner) {
+    const source = new EventSource("/api/events");
+    source.addEventListener("message", () => {
+      banner.hidden = false;
+    });
+  }
+</script>

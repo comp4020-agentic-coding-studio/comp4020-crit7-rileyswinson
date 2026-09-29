@@ -1,0 +1,54 @@
+---
+import type { RequestRow } from "../lib/db";
+import { formatDue } from "../lib/dates";
+
+interface Props {
+  rows: RequestRow[];
+  showStudent?: boolean;
+  empty: string;
+}
+
+const { rows, showStudent = false, empty } = Astro.props;
+const KIND = { auto: "Automatic", short: "Short", eca: "ECA" } as const;
+---
+
+{
+  rows.length === 0 ? (
+    <p class="hint">{empty}</p>
+  ) : (
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Type</th>
+            {showStudent && <th scope="col">Student</th>}
+            <th scope="col">Course · assignment</th>
+            <th scope="col">Requested due date</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr>
+              <td data-label="Type">
+                <span class={`badge ${r.kind}`}>{KIND[r.kind]}</span>
+              </td>
+              {showStudent && <td data-label="Student">{r.studentUid}</td>}
+              <td data-label="Assignment">
+                <a href={`/requests/${r.id}/`}>
+                  {r.courseCode} · {r.assignmentName}
+                </a>
+              </td>
+              <td data-label="New due">
+                {formatDue(r.newDueAt)} <span class="hint">(+{r.workingDays} working days)</span>
+              </td>
+              <td data-label="Status">
+                <span class={`badge ${r.status}`}>{r.status}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}

@@ -1,0 +1,72 @@
+---
+import { LINKS } from "../lib/policy";
+
+// The role + EAP form, shared by first-time setup and "Change my data".
+interface Props {
+  isStudent: boolean;
+  isStaff: boolean;
+  hasEap: boolean;
+  submit: string;
+  error?: string;
+}
+
+const { isStudent, isStaff, hasEap, submit, error } = Astro.props;
+---
+
+<form method="post" class="panel stack">
+  <fieldset aria-describedby={error ? "roles-hint roles-error" : "roles-hint"}>
+    <legend>I am…</legend>
+    <p class="hint" id="roles-hint">
+      Tick both if you study and teach. You'll then pick a side on the homepage.
+    </p>
+    <label class="check">
+      <input type="checkbox" name="student" checked={isStudent} />
+      <span>A student: I want to request extensions</span>
+    </label>
+    <label class="check">
+      <input type="checkbox" name="staff" checked={isStaff} />
+      <span>Course staff: I manage courses and decide short extensions</span>
+    </label>
+    {error && <p class="error" id="roles-error">{error}</p>}
+  </fieldset>
+
+  <fieldset>
+    <legend>Education Access Plan</legend>
+    <label class="check">
+      <input type="checkbox" name="eap" id="eap" checked={hasEap} />
+      <span>I have an EAP</span>
+    </label>
+    <p class="hint">
+      EAPs come from <a href={LINKS.accessInclusion}>ANU Access and Inclusion</a> under the <a
+        href={LINKS.disability}>Adjustments for students who disclose a disability procedure</a
+      >.
+    </p>
+  </fieldset>
+
+  <div class="actions">
+    <button>{submit}</button>
+  </div>
+</form>
+
+<dialog id="eap-dialog" aria-labelledby="eap-dialog-title">
+  <h2 id="eap-dialog-title">EAP sync is coming</h2>
+  <p>
+    In the future, your Education Access Plan will sync to your account automatically.
+  </p>
+  <p>
+    For now, ticking this box adds a <strong>Share EAP</strong> button to the short extension
+    form. It requests a default 5 working day extension and shares your EAP with the course
+    convenor.
+  </p>
+  <form method="dialog" class="actions">
+    <button>Got it</button>
+  </form>
+</dialog>
+
+<script>
+  const box = document.querySelector<HTMLInputElement>("#eap");
+  const dialog = document.querySelector<HTMLDialogElement>("#eap-dialog");
+  box?.addEventListener("change", () => {
+    if (box.checked) dialog?.showModal();
+  });
+</script>

@@ -6,7 +6,7 @@ export const LINKS = {
   procedure: "https://policies.anu.edu.au/ppl/document/ANUP_004604",
   policy: "https://policies.anu.edu.au/ppl/document/ANUP_004603",
   disability: "https://policies.anu.edu.au/ppl/document/ANUP_002604",
-  accessInclusion: "https://www.anu.edu.au/students/wellbeing/access-inclusion",
+  accessInclusion: "https://www.anu.edu.au/students/accessibility/how-to-register",
 };
 
 export const AUTO_MAX_DAYS = 2; // "< 3 working days"

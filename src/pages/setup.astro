@@ -1,0 +1,37 @@
+---
+import RoleForm from "../components/RoleForm.astro";
+import Layout from "../layouts/Layout.astro";
+import { saveUser } from "../lib/db";
+import { getSession } from "../lib/session";
+
+// First login for a UID we haven't seen: ask student or staff (or both),
+// then store it so the question never comes up again.
+const session = getSession(Astro.cookies);
+if (!session) return Astro.redirect("/");
+if (session.kind !== "new") return Astro.redirect("/");
+
+let error = "";
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const isStudent = form.has("student");
+  const isStaff = form.has("staff");
+  if (!isStudent && !isStaff) {
+    error = "Choose student, staff, or both.";
+    Astro.response.status = 400;
+  } else {
+    saveUser({ uid: session.uid, isStudent, isStaff, hasEap: form.has("eap") });
+    return Astro.redirect("/", 303);
+  }
+}
+---
+
+<Layout title="Set up your account">
+  <section class="narrow">
+    <h1>Set up your account</h1>
+    <p class="lede">
+      First time here as <strong>{session.uid}</strong>. Tell us who you are. You can change
+      this later under <em>My data</em>.
+    </p>
+    <RoleForm isStudent={true} isStaff={false} hasEap={false} submit="Create my account" error={error} />
+  </section>
+</Layout>
