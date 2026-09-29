@@ -24,6 +24,13 @@ export function readPick(
   if (!Number.isInteger(days) || days < min || days > max) {
     return { ok: false, error: `Choose between ${min} and ${max} working days.` };
   }
+  if (!allowPast && assignment.kind === "central_exam") {
+    return {
+      ok: false,
+      error:
+        "That's a centrally run exam in the exam block. Those go through an Extenuating Circumstances Application, not a course extension.",
+    };
+  }
   if (!allowPast && isPast(assignment.dueAt)) {
     return {
       ok: false,

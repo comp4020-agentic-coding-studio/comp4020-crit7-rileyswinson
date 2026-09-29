@@ -9,12 +9,14 @@ import {
   type Attachment,
   type Course,
   type ExtensionRequest,
+  type Response,
   type User,
   assignments,
   attachments,
   courseStaff,
   courses,
   requests,
+  responses,
   users,
 } from "./schema";
 
@@ -37,7 +39,9 @@ export const db = drizzle(client);
 // commit the migration it writes to drizzle/.
 migrate(db, { migrationsFolder: "./drizzle" });
 
-export type { Assignment, Attachment, Course, ExtensionRequest, User };
+export type { Assignment, Attachment, Course, ExtensionRequest, Response, User };
+export type AssignmentKind = Assignment["kind"];
+export type Status = ExtensionRequest["status"];
 
 // ── users ────────────────────────────────────────────────────────────────
 
@@ -135,12 +139,12 @@ export function getAssignment(id: number): Assignment | undefined {
   return db.select().from(assignments).where(eq(assignments.id, id)).get();
 }
 
-export function addAssignment(courseId: number, name: string, dueAt: string): Assignment {
-  return db.insert(assignments).values({ courseId, name, dueAt }).returning().get();
+export function addAssignment(courseId: number, name: string, dueAt: string, kind: AssignmentKind): Assignment {
+  return db.insert(assignments).values({ courseId, name, dueAt, kind }).returning().get();
 }
 
-export function updateAssignment(id: number, name: string, dueAt: string): void {
-  db.update(assignments).set({ name, dueAt }).where(eq(assignments.id, id)).run();
+export function updateAssignment(id: number, name: string, dueAt: string, kind: AssignmentKind): void {
+  db.update(assignments).set({ name, dueAt, kind }).where(eq(assignments.id, id)).run();
 }
 
 export function deleteAssignment(id: number): void {
@@ -152,6 +156,7 @@ export function deleteAssignment(id: number): void {
 export type RequestRow = ExtensionRequest & {
   assignmentName: string;
   dueAt: string;
+  assignmentKind: AssignmentKind;
   courseId: number;
   courseCode: string;
   courseName: string;
@@ -175,6 +180,7 @@ function requestQuery() {
       createdAt: requests.createdAt,
       assignmentName: assignments.name,
       dueAt: assignments.dueAt,
+      assignmentKind: assignments.kind,
       courseId: courses.id,
       courseCode: courses.code,
       courseName: courses.name,
@@ -237,13 +243,21 @@ export function createRequest(
   });
 }
 
-export function decideRequest(
+// A status change and the response explaining it land together or not at all.
+export function respond(
   id: number,
-  status: "approved" | "declined",
-  note: string,
-  by: string,
+  status: Response["status"],
+  body: string,
+  author: string,
 ): void {
-  db.update(requests).set({ status, decisionNote: note, decidedBy: by }).where(eq(requests.id, id)).run();
+  db.transaction((tx) => {
+    tx.insert(responses).values({ requestId: id, status, body, author }).run();
+    tx.update(requests).set({ status, decisionNote: body, decidedBy: author }).where(eq(requests.id, id)).run();
+  });
+}
+
+export function listResponses(requestId: number): Response[] {
+  return db.select().from(responses).where(eq(responses.requestId, requestId)).orderBy(asc(responses.id)).all();
 }
 
 // ── attachments ──────────────────────────────────────────────────────────

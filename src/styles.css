@@ -391,6 +391,12 @@ button:hover,
   filter: brightness(1.1);
 }
 
+.button.small {
+  padding: 0.15rem 0.7rem;
+  font-size: 0.85rem;
+  margin-left: 0.4rem;
+}
+
 button.secondary,
 .button.secondary {
   background: transparent;
@@ -549,6 +555,11 @@ th {
 .badge.approved {
   background: var(--ok-soft);
   color: var(--ok);
+}
+
+.badge.considering {
+  background: var(--staff-soft);
+  color: var(--staff);
 }
 
 .badge.pending {

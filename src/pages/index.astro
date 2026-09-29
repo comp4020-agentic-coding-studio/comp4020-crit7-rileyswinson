@@ -39,7 +39,7 @@ const side = session?.kind === "user" ? session.side : null;
 const mine = session?.kind === "user" && side === "student" ? requestsForStudent(session.uid) : [];
 const staffCourses = session?.kind === "user" && side === "staff" ? coursesForStaff(session.uid) : [];
 const incoming = session?.kind === "user" && side === "staff" ? requestsForStaff(session.uid) : [];
-const pending = incoming.filter((r) => r.status === "pending");
+const open = incoming.filter((r) => r.status === "pending" || r.status === "considering");
 ---
 
 <Layout title={session ? "Home" : "Log in"}>
@@ -118,8 +118,27 @@ const pending = incoming.filter((r) => r.status === "pending");
                 <span>Automatic short extension, short extension, or an ECA.</span>
               </a>
             </div>
+            <section class="callout central" aria-labelledby="exams">
+              <h2 id="exams" style="margin-top:0">Exams: which route?</h2>
+              <ul>
+                <li>
+                  <strong>Centrally run exams</strong>, held in the exam block, go through an{" "}
+                  <strong>Extenuating Circumstances Application</strong> to the central team. Your course can't
+                  change them.
+                </li>
+                <li>
+                  <strong>Exams your course, school or college runs itself</strong> (e.g. in-class tests, mid-semester
+                  exams in class time) go through the <strong>normal extension</strong> routes, like any other
+                  coursework.
+                </li>
+              </ul>
+              <p>
+                Other alternative arrangements for coursework assessment (e.g. a different format or task) aren't
+                handled here. They're for discussion between you and your course convenor.
+              </p>
+            </section>
             <h2>My requests</h2>
-            <RequestTable rows={mine} empty="You haven't made any requests yet." />
+            <RequestTable rows={mine} appeal empty="You haven't made any requests yet." />
           </>
         )}
 
@@ -142,9 +161,10 @@ const pending = incoming.filter((r) => r.status === "pending");
             <p class="live-banner callout staff" id="live" hidden>
               New requests have arrived. <a href="/">Refresh the list</a>.
             </p>
-            <h2>Requests waiting for a decision ({pending.length})</h2>
+            <h2>Requests waiting for a response ({open.length})</h2>
+            <p class="hint">Open one to see everything the applicant sent and respond. Every status change needs a written response.</p>
             <RequestTable
-              rows={pending}
+              rows={open}
               showStudent
               empty="Nothing waiting. Short extensions for your courses appear here."
             />

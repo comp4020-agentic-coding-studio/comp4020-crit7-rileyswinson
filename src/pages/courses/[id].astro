@@ -13,6 +13,7 @@ import {
   updateAssignment,
 } from "../../lib/db";
 import { formatDue } from "../../lib/dates";
+import { ASSIGNMENT_KIND_LABEL } from "../../lib/labels";
 import { getSession, normaliseUid } from "../../lib/session";
 
 const session = getSession(Astro.cookies);
@@ -24,6 +25,7 @@ if (!course || !isCourseStaff(course.id, session.uid)) {
 }
 
 const DUE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+const KINDS = Object.keys(ASSIGNMENT_KIND_LABEL) as (keyof typeof ASSIGNMENT_KIND_LABEL)[];
 let error = "";
 
 if (Astro.request.method === "POST") {
@@ -31,14 +33,15 @@ if (Astro.request.method === "POST") {
   const action = String(form.get("action") ?? "");
   const name = String(form.get("name") ?? "").trim().slice(0, 200);
   const dueAt = String(form.get("dueAt") ?? "");
+  const kind = KINDS.find((k) => k === form.get("kind")) ?? "coursework";
   const assignment = getAssignment(Number(form.get("assignmentId")));
   const ownAssignment = assignment?.courseId === course.id;
 
   if (action === "add-assignment" || action === "edit-assignment") {
     if (!name) error = "Give the assignment a name.";
     else if (!DUE.test(dueAt)) error = "Pick a due date and time.";
-    else if (action === "add-assignment") addAssignment(course.id, name, dueAt);
-    else if (ownAssignment) updateAssignment(assignment.id, name, dueAt);
+    else if (action === "add-assignment") addAssignment(course.id, name, dueAt, kind);
+    else if (ownAssignment) updateAssignment(assignment.id, name, dueAt, kind);
   } else if (action === "delete-assignment" && ownAssignment) {
     deleteAssignment(assignment.id);
   } else if (action === "add-staff") {
@@ -76,7 +79,7 @@ const staff = listStaff(course.id);
           <li>
             <details>
               <summary>
-                {a.name}, due {formatDue(a.dueAt)}
+                {a.name}, due {formatDue(a.dueAt)} <span class="hint">· {ASSIGNMENT_KIND_LABEL[a.kind]}</span>
               </summary>
               <form method="post" class="stack" style="margin-top:0.75rem">
                 <input type="hidden" name="action" value="edit-assignment" />
@@ -89,6 +92,12 @@ const staff = listStaff(course.id);
                   <div class="field">
                     <label for={`due-${a.id}`}>Due</label>
                     <input id={`due-${a.id}`} name="dueAt" type="datetime-local" required value={a.dueAt} />
+                  </div>
+                  <div class="field">
+                    <label for={`kind-${a.id}`}>Type</label>
+                    <select id={`kind-${a.id}`} name="kind">
+                      {KINDS.map((k) => <option value={k} selected={k === a.kind}>{ASSIGNMENT_KIND_LABEL[k]}</option>)}
+                    </select>
                   </div>
                 </div>
                 <div class="actions">
@@ -117,7 +126,17 @@ const staff = listStaff(course.id);
         <label for="new-due">Due date and time</label>
         <input id="new-due" name="dueAt" type="datetime-local" required />
       </div>
+      <div class="field">
+        <label for="new-kind">Type</label>
+        <select id="new-kind" name="kind" aria-describedby="kind-hint">
+          {KINDS.map((k) => <option value={k}>{ASSIGNMENT_KIND_LABEL[k]}</option>)}
+        </select>
+      </div>
     </div>
+    <p class="hint" id="kind-hint">
+      Coursework and exams your course, school or college runs itself go through normal extensions. Centrally
+      run exams in the exam block can only be adjusted through an ECA.
+    </p>
     <div class="actions"><button>Add assignment</button></div>
   </form>
 

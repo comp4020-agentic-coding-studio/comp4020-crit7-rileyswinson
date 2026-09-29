@@ -1,0 +1,35 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { getRequest } from "../../lib/db";
+import { getSession } from "../../lib/session";
+
+// Where the Appeal button next to a denial leads. Only the applicant, only
+// for a denied request.
+const session = getSession(Astro.cookies);
+const r = getRequest(Number(Astro.params.id));
+if (!r || session?.uid !== r.studentUid || r.status !== "declined") {
+  return new Response("Not found", { status: 404 });
+}
+---
+
+<Layout title="Appeal">
+  <p><a href={`/requests/${r.id}/`}>← Back to the request</a></p>
+  <h1>Appeal a denied {r.kind === "eca" ? "ECA" : "extension"}</h1>
+  <p class="lede">{r.courseCode} · {r.assignmentName}</p>
+  {
+    r.kind === "eca" ? (
+      <div class="callout central">
+        <p><strong>This will be a link to the ANU appeal form.</strong></p>
+        <p>
+          The appeal must be made within <strong>10 working days</strong> of the release of the ECA result.
+        </p>
+      </div>
+    ) : (
+      <div class="callout staff">
+        <p>
+          <strong>This is only appealable alongside all course grades at the end of the semester.</strong>
+        </p>
+      </div>
+    )
+  }
+</Layout>

@@ -1,19 +1,9 @@
 # Reflections
 
-One short markdown file per crit, named for the crit it answers --- so the
-number in the filename is the number in your repo's name: `crit-1.md` in
-`comp4020-crit1-<you>`, `crit-2.md` in `comp4020-crit2-<you>`, and so on. The
-final-project repo carries one per crit: `crit-8.md`, `crit-9.md` and
-`crit-10.md`.
+## What was the breakthrough that moved the work forward?
 
-Assignment repos carry none. An assignment's written account is `PROCESS.md`,
-and the retro crit that follows presents from it.
+I got another email about ridiculous extension request denials based on some arbitrary or ridiculous reasons primarily based on the fault of the submission form and not the student. The brokeness of the extnsion form infuriates me. So even a vibecoded terrible one is a way better proof of concept then the junk we currently have (which is itself better than the old system of "every course as a free-for-all!")
 
-Each answers the two standing prompts:
+## What did this work change about who I want to be as a software developer?
 
-1. What was the breakthrough that moved the work forward?
-2. What did this work change about who I want to be as a software developer?
-
-150--300 words is plenty. `pnpm check:evidence` checks the name, because the
-cutoff sweep reads that exact file --- anything else reads as no reflection at
-all. These stay in the repo; they're not part of the deployed site.
+It made me dread being forced to use AI in the workplace by those who don't understand that human input and consideration is very much needed in the procesess, and AI is not a 'cheat' tool; but other than career dread, not that much, and I'd be lying if I said otherwise!

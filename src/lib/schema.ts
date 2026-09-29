@@ -59,6 +59,11 @@ export const assignments = sqliteTable("assignments", {
   name: text().notNull(),
   // local Canberra wall-clock time, "YYYY-MM-DDTHH:mm"
   dueAt: text("due_at").notNull(),
+  // coursework and exams the course/school/college runs itself go through
+  // ordinary extensions; centrally run exams (the exam block) need an ECA
+  kind: text({ enum: ["coursework", "local_exam", "central_exam"] })
+    .notNull()
+    .default("coursework"),
 });
 
 // auto  — automatic short extension, granted on submission, course staff see it
@@ -76,7 +81,8 @@ export const requests = sqliteTable("requests", {
   message: text().notNull().default(""),
   circumstance: text().notNull().default(""),
   eapShared: int("eap_shared", { mode: "boolean" }).notNull().default(false),
-  status: text({ enum: ["pending", "approved", "declined"] }).notNull(),
+  // pending: nobody has responded yet; the rest are set by a response
+  status: text({ enum: ["pending", "considering", "approved", "declined"] }).notNull(),
   decisionNote: text("decision_note").notNull().default(""),
   decidedBy: text("decided_by"),
   createdAt: text("created_at")
@@ -95,9 +101,26 @@ export const attachments = sqliteTable("attachments", {
   data: blob({ mode: "buffer" }).notNull(),
 });
 
+// Every status change by staff or CENTRAL carries a written response to the
+// applicant, kept as a thread so "under consideration" then "accepted" both
+// stay on the record.
+export const responses = sqliteTable("responses", {
+  id: int().primaryKey({ autoIncrement: true }),
+  requestId: int("request_id")
+    .notNull()
+    .references(() => requests.id, { onDelete: "cascade" }),
+  author: text().notNull(),
+  status: text({ enum: ["considering", "approved", "declined"] }).notNull(),
+  body: text().notNull(),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
 export type Message = typeof messages.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Course = typeof courses.$inferSelect;
 export type Assignment = typeof assignments.$inferSelect;
 export type ExtensionRequest = typeof requests.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;
+export type Response = typeof responses.$inferSelect;

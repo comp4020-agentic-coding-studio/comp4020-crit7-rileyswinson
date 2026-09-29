@@ -1,14 +1,17 @@
 ---
 import type { RequestRow } from "../lib/db";
 import { formatDue } from "../lib/dates";
+import { STATUS_LABEL } from "../lib/labels";
 
 interface Props {
   rows: RequestRow[];
   showStudent?: boolean;
+  // the applicant's own list: a denial gets its Appeal button right beside it
+  appeal?: boolean;
   empty: string;
 }
 
-const { rows, showStudent = false, empty } = Astro.props;
+const { rows, showStudent = false, appeal = false, empty } = Astro.props;
 const KIND = { auto: "Automatic", short: "Short", eca: "ECA" } as const;
 ---
 
@@ -43,7 +46,12 @@ const KIND = { auto: "Automatic", short: "Short", eca: "ECA" } as const;
                 {formatDue(r.newDueAt)} <span class="hint">(+{r.workingDays} working days)</span>
               </td>
               <td data-label="Status">
-                <span class={`badge ${r.status}`}>{r.status}</span>
+                <span class={`badge ${r.status}`}>{STATUS_LABEL[r.status]}</span>
+                {appeal && r.status === "declined" && (
+                  <a class="button secondary small" href={`/appeal/${r.id}/`} aria-label={`Appeal ${r.courseCode} ${r.assignmentName} denial`}>
+                    Appeal
+                  </a>
+                )}
               </td>
             </tr>
           ))}

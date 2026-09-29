@@ -8,7 +8,7 @@ const session = getSession(Astro.cookies);
 if (session?.kind !== "central") return Astro.redirect("/");
 
 const all = requestsForCentral();
-const pending = all.filter((r) => r.status === "pending");
+const open = all.filter((r) => r.status === "pending" || r.status === "considering");
 ---
 
 <Layout title="ECA queue">
@@ -19,8 +19,9 @@ const pending = all.filter((r) => r.status === "pending");
   </p>
   <p class="live-banner callout central" id="live" hidden>New applications have arrived. <a href="/central/">Refresh</a>.</p>
 
-  <h2>Waiting for a decision ({pending.length})</h2>
-  <RequestTable rows={pending} showStudent empty="No applications waiting." />
+  <h2>Waiting for a response ({open.length})</h2>
+  <p class="hint">Open an application to see its documents and respond. Every status change needs a written response.</p>
+  <RequestTable rows={open} showStudent empty="No applications waiting." />
 
   <h2>All applications</h2>
   <RequestTable rows={all} showStudent empty="No applications yet." />

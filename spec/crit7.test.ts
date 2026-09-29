@@ -147,8 +147,53 @@ describe("crit 7: extension requests", () => {
     expect(mine).toContain("cert.txt");
 
     expect(await staff.html("/")).toContain(`/requests/${id}/`);
-    expect((await staff.post(`/requests/${id}/`, { decision: "approved", note: "fine" })).status).toBe(303);
-    expect(await student.html(`/requests/${id}/`)).toContain("Approved.");
+    const staffView = await staff.html(`/requests/${id}/`);
+    expect(staffView).toContain("short spec probe");
+    expect(staffView).toContain("cert.txt");
+    expect(staffView).toContain("EAP indicated");
+  });
+
+  it("won't change a status without a written response, from staff or CENTRAL", async () => {
+    const res = await student.post("/request/short/", {
+      courseId: String(courseId), assignmentId: String(openId), days: "3", message: "needs a reply",
+    });
+    const id = idFrom(res);
+    for (const decision of ["approved", "considering", "declined"]) {
+      expect((await staff.post(`/requests/${id}/`, { decision, response: "  " })).status).toBe(400);
+    }
+    expect((await staff.post(`/requests/${id}/`, { decision: "considering", response: "Checking" })).status).toBe(303);
+    expect((await staff.post(`/requests/${id}/`, { decision: "approved", response: "Ok" })).status).toBe(303);
+    const page = await student.html(`/requests/${id}/`);
+    expect(page).toContain("Accepted.");
+    expect(page).toContain("Checking");
+    expect(page).toContain("Under consideration");
+  });
+
+  it("puts an Appeal button next to a denial; a course appeal waits for end-of-semester grades", async () => {
+    const res = await student.post("/request/short/", {
+      courseId: String(courseId), assignmentId: String(openId), days: "4", message: "deny me",
+    });
+    const id = idFrom(res);
+    await staff.post(`/requests/${id}/`, { decision: "declined", response: "No evidence" });
+    expect(await student.html("/")).toContain(`/appeal/${id}/`);
+    expect(await student.html(`/appeal/${id}/`)).toContain(
+      "This is only appealable alongside all course grades at the end of the semester.",
+    );
+    expect((await staff.get(`/appeal/${id}/`)).status).toBe(404);
+  });
+
+  it("sends centrally run exams to an ECA, while course-run exams use normal extensions", async () => {
+    await staff.post(`/courses/${courseId}/`, { action: "add-assignment", name: "Final exam", dueAt: futureDue, kind: "central_exam" });
+    await staff.post(`/courses/${courseId}/`, { action: "add-assignment", name: "Class test", dueAt: futureDue, kind: "local_exam" });
+    const page = await staff.html(`/courses/${courseId}/`);
+    const idOf = (name: string) =>
+      Number(page.split("<details").find((c) => c.includes(`value="${name}"`))?.match(/name="assignmentId" value="(\d+)"/)?.[1]);
+    const short = (assignmentId: number) =>
+      student.post("/request/short/", { courseId: String(courseId), assignmentId: String(assignmentId), days: "2", message: "exam" });
+    expect((await short(idOf("Final exam"))).status).toBe(400);
+    expect((await short(idOf("Class test"))).status).toBe(303);
+    expect(await student.html("/")).toContain("Centrally run exams");
+    expect(await student.html("/")).toContain("discussion between you and your course convenor");
   });
 
   it("routes an ECA to CENTRAL and never to course staff", async () => {
@@ -170,6 +215,10 @@ describe("crit 7: extension requests", () => {
     const file = (await central.html(`/requests/${id}/`)).match(/\/attachments\/(\d+)/)?.[1];
     expect((await central.get(`/attachments/${file}`)).status).toBe(200);
     expect((await staff.get(`/attachments/${file}`)).status).toBe(404);
+
+    expect((await central.post(`/requests/${id}/`, { decision: "declined", response: "" })).status).toBe(400);
+    expect((await central.post(`/requests/${id}/`, { decision: "declined", response: "Insufficient evidence" })).status).toBe(303);
+    expect(await student.html(`/appeal/${id}/`)).toContain("This will be a link to the ANU appeal form.");
   });
 
   it("gives a UID added as course staff that course on their staff side", async () => {
@@ -198,19 +247,29 @@ describe("crit 7: extension requests", () => {
     ["/courses/", () => staff],
     ["/central/", () => central],
   ];
+  it("the request page (staff view) and the appeal page pass the same floor", async () => {
+    const home = await student.html("/");
+    const appeal = home.match(/\/appeal\/(\d+)\//)?.[0];
+    expect(appeal).toBeTruthy();
+    await floor(student, appeal!);
+    const any = (await staff.html("/")).match(/\/requests\/(\d+)\//)?.[0];
+    await floor(staff, any!);
+  });
+
   for (const [path, who] of pages) {
-    it(`signed-in ${path} has one h1, a nav, and no axe violations`, async () => {
-      const b = who();
-      const dom = new JSDOM(await b.html(path), { url: new URL(path, baseUrl).href, runScripts: "outside-only" });
-      const doc = dom.window.document;
-      expect(doc.querySelectorAll("h1").length).toBe(1);
-      expect(doc.querySelector("nav")).toBeTruthy();
-      const w = dom.window as unknown as { eval: (s: string) => void; axe: typeof axe };
-      w.eval(axe.source);
-      const results = await w.axe.run(doc, {
-        rules: { "color-contrast": { enabled: false }, "link-in-text-block": { enabled: false } },
-      });
-      expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join("; ")}`)).toEqual([]);
-    });
+    it(`signed-in ${path} has one h1, a nav, and no axe violations`, () => floor(who(), path));
   }
 });
+
+async function floor(b: Browser, path: string) {
+  const dom = new JSDOM(await b.html(path), { url: new URL(path, baseUrl).href, runScripts: "outside-only" });
+  const doc = dom.window.document;
+  expect(doc.querySelectorAll("h1").length).toBe(1);
+  expect(doc.querySelector("nav")).toBeTruthy();
+  const w = dom.window as unknown as { eval: (s: string) => void; axe: typeof axe };
+  w.eval(axe.source);
+  const results = await w.axe.run(doc, {
+    rules: { "color-contrast": { enabled: false }, "link-in-text-block": { enabled: false } },
+  });
+  expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join("; ")}`)).toEqual([]);
+}

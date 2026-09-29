@@ -67,7 +67,8 @@ if (Astro.request.method === "POST") {
   <p><a href="/request/">← All extension types</a></p>
   <h1>Extenuating Circumstances Application</h1>
   <p class="lede">
-    For 10 or more working days, or when the due date has passed. Handled by the{" "}
+    For centrally run exams in the exam block, and for coursework needing 10 or more working days or past its
+    due date. Exams your course, school or college runs itself use the normal extensions. Handled by the{" "}
     <strong>central team</strong> (the Division of Student Administration and Academic Services), not your
     course staff.
   </p>
@@ -161,7 +162,7 @@ if (Astro.request.method === "POST") {
   // Nudge toward a Short Extension when that's the better fit (clause 12/13).
   const hint = document.querySelector<HTMLElement>("#eca-route-hint");
   document.addEventListener("picker:change", (e) => {
-    const { due, days } = (e as CustomEvent<{ due?: string; days: number }>).detail;
-    if (hint) hint.hidden = !(due && days < 10 && !isPast(due));
+    const { due, days, kind } = (e as CustomEvent<{ due?: string; days: number; kind?: string }>).detail;
+    if (hint) hint.hidden = !(due && kind !== "central_exam" && days < 10 && !isPast(due));
   });
 </script>

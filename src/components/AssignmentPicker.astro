@@ -42,15 +42,18 @@ const preview = selected ? formatDue(addWorkingDays(selected.dueAt, days)) : "";
             <optgroup label={course.code} data-course={course.id}>
               {items.map((a) => {
                 const past = isPast(a.dueAt, now);
+                const central = a.kind === "central_exam";
+                const why = central && blockPast ? " (centrally run exam: use an ECA)" : past ? (blockPast ? " (past due: use an ECA)" : " (past due)") : "";
                 return (
                   <option
                     value={a.id}
                     data-due={a.dueAt}
+                    data-kind={a.kind}
                     selected={a.id === assignmentId}
-                    disabled={blockPast && past}
+                    disabled={blockPast && (past || central)}
                   >
-                    {a.name}, due {formatDue(a.dueAt)}
-                    {past ? (blockPast ? " (past due: use an ECA)" : " (past due)") : ""}
+                    {a.name}{a.kind !== "coursework" ? ` [${a.kind === "central_exam" ? "central exam" : "exam"}]` : ""}, due {formatDue(a.dueAt)}
+                    {why}
                   </option>
                 );
               })}
@@ -112,9 +115,10 @@ const preview = selected ? formatDue(addWorkingDays(selected.dueAt, days)) : "";
 
   function update() {
     const due = assignment.selectedOptions[0]?.dataset.due;
+    const kind = assignment.selectedOptions[0]?.dataset.kind;
     const n = Number(days.value);
     out.value = due && n > 0 ? formatDue(addWorkingDays(due, n)) : "Choose an assignment";
-    document.dispatchEvent(new CustomEvent("picker:change", { detail: { due, days: n } }));
+    document.dispatchEvent(new CustomEvent("picker:change", { detail: { due, days: n, kind } }));
   }
 
   // Picking an assignment first fills in its course.

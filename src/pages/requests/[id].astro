@@ -1,23 +1,34 @@
 ---
 import Layout from "../../layouts/Layout.astro";
-import { decideRequest, getRequest, listAttachments } from "../../lib/db";
+import { getRequest, getUser, listAttachments, listResponses, respond } from "../../lib/db";
 import { formatDue } from "../../lib/dates";
+import { ASSIGNMENT_KIND_LABEL, STATUS_LABEL } from "../../lib/labels";
 import { EAP_NOTE, LINKS } from "../../lib/policy";
 import { canDecide, canView, getSession } from "../../lib/session";
 
+// One request, on its own page. The applicant sees their request and every
+// response; the decider (course staff for short extensions, CENTRAL for
+// ECAs) also sees what the applicant told us about themselves, and can only
+// change the status by writing a response.
 const session = getSession(Astro.cookies);
 let r = getRequest(Number(Astro.params.id));
 if (!r || !canView(session, r)) return new Response("Not found", { status: 404 });
 
+const DECISIONS = ["approved", "considering", "declined"] as const;
+const ACTION = { approved: "Accept", considering: "Consider", declined: "Deny" } as const;
+
 let error = "";
+let draft = "";
+let chosen = "";
 if (Astro.request.method === "POST" && canDecide(session, r)) {
   const form = await Astro.request.formData();
-  const decision = form.get("decision");
-  const note = String(form.get("note") ?? "").trim().slice(0, 5000);
-  if (decision !== "approved" && decision !== "declined") error = "Choose approve or decline.";
-  else if (decision === "declined" && !note) error = "Give the student a reason when declining (clause 24).";
+  chosen = String(form.get("decision") ?? "");
+  draft = String(form.get("response") ?? "").trim().slice(0, 5000);
+  const decision = DECISIONS.find((d) => d === chosen);
+  if (!decision) error = "Choose Accept, Consider or Deny.";
+  else if (!draft) error = "Write a response to the applicant before changing the status. One word is enough.";
   else {
-    decideRequest(r.id, decision, note, session!.uid);
+    respond(r.id, decision, draft, session!.uid);
     return Astro.redirect(`/requests/${r.id}/`, 303);
   }
   Astro.response.status = 400;
@@ -25,10 +36,13 @@ if (Astro.request.method === "POST" && canDecide(session, r)) {
 r = getRequest(r.id)!;
 
 const files = listAttachments(r.id);
+const thread = listResponses(r.id);
+const applicant = getUser(r.studentUid);
 const isOwner = session?.uid === r.studentUid;
+const decider = canDecide(session, r);
 const TITLE = { auto: "Automatic Short Extension", short: "Short Extension", eca: "Extenuating Circumstances Application" };
 const HANDLER = {
-  auto: "Granted automatically; recorded with your course staff",
+  auto: "Granted automatically; recorded with course staff",
   short: `Course staff for ${r.courseCode}`,
   eca: "The central team (DSAAS)",
 };
@@ -43,18 +57,19 @@ const back = session?.kind === "central" ? "/central/" : "/";
     r.status === "approved" && (
       <div class="callout ok" role="status">
         <p>
-          <strong>{r.kind === "auto" ? "Granted." : "Approved."}</strong> Your new due date is
+          <strong>{r.kind === "auto" ? "Granted." : "Accepted."}</strong> The new due date is
         </p>
         <p class="big-date">{formatDue(r.newDueAt)}</p>
       </div>
     )
   }
   {
-    r.status === "pending" && (
+    (r.status === "pending" || r.status === "considering") && (
       <div class="callout warn" role="status">
         <p>
-          <strong>Waiting for a decision</strong> from {r.kind === "eca" ? "the central team" : "your course staff"}.
-          The requested new due date is <strong>{formatDue(r.newDueAt)}</strong>.
+          <strong>{r.status === "pending" ? "Submitted, awaiting a response" : "Under consideration"}</strong> by{" "}
+          {r.kind === "eca" ? "the central team" : "course staff"}. The requested new due date is{" "}
+          <strong>{formatDue(r.newDueAt)}</strong>.
           {r.kind === "eca"
             ? " The procedure says you'll be told within five working days of a decision being made (clause 35)."
             : " The procedure says you'll be told within three working days of the decision (clause 21)."}
@@ -66,43 +81,66 @@ const back = session?.kind === "central" ? "/central/" : "/";
     r.status === "declined" && (
       <div class="callout bad" role="status">
         <p>
-          <strong>Declined.</strong> The original due date of {formatDue(r.dueAt)} stands. You can appeal under the
-          process in the <a href={LINKS.procedure}>procedure</a> (clause 25).
+          <strong>Denied.</strong> The original due date of {formatDue(r.dueAt)} stands.
         </p>
+        {isOwner && (
+          <p>
+            <a class="button" href={`/appeal/${r.id}/`}>Appeal</a>
+          </p>
+        )}
       </div>
     )
   }
 
-  <section class="panel">
+  <section class="panel" aria-labelledby="details">
+    <h2 id="details" style="margin-top:0">Request</h2>
     <dl class="kv">
-      <dt>Student</dt><dd>{r.studentUid}</dd>
+      <dt>Applicant</dt><dd>{r.studentUid}</dd>
       <dt>Course</dt><dd>{r.courseCode}: {r.courseName}</dd>
-      <dt>Assignment</dt><dd>{r.assignmentName}</dd>
+      <dt>Assessment</dt><dd>{r.assignmentName} <span class="hint">({ASSIGNMENT_KIND_LABEL[r.assignmentKind]})</span></dd>
       <dt>Original due</dt><dd>{formatDue(r.dueAt)}</dd>
       <dt>Extension</dt><dd>{r.workingDays} working day{r.workingDays === 1 ? "" : "s"}</dd>
       <dt>New due</dt><dd>{formatDue(r.newDueAt)}</dd>
+      <dt>Status</dt><dd><span class={`badge ${r.status}`}>{STATUS_LABEL[r.status]}</span></dd>
       <dt>Handled by</dt><dd>{HANDLER[r.kind]}</dd>
       <dt>Submitted</dt><dd>{r.createdAt} UTC</dd>
       {r.circumstance && (<><dt>Circumstance</dt><dd>{r.circumstance}</dd></>)}
     </dl>
   </section>
 
-  {r.eapShared && <p class="callout ok"><strong>EAP shared.</strong> {EAP_NOTE}</p>}
-
   {
-    r.message && (
-      <section>
-        <h2>{r.kind === "eca" ? "Circumstances" : "Note to course staff"}</h2>
-        <p class="panel" style="white-space: pre-wrap">{r.message}</p>
+    !isOwner && (
+      <section class="panel" aria-labelledby="eap-h">
+        <h2 id="eap-h" style="margin-top:0">Education Access Plan</h2>
+        <p>
+          {applicant?.hasEap ? (
+            <><span class="badge approved">EAP indicated</span> The applicant says they have an EAP.</>
+          ) : (
+            <><span class="badge">No EAP indicated</span> The applicant hasn't said they have an EAP.</>
+          )}
+        </p>
+        {r.eapShared && <p class="callout ok"><strong>EAP shared with this request.</strong> The applicant shared their EAP, with a recommendation to approve the extension.</p>}
       </section>
     )
   }
+  {isOwner && r.eapShared && <p class="callout ok"><strong>EAP shared.</strong> {EAP_NOTE}</p>}
+
+  <section aria-labelledby="said">
+    <h2 id="said">{r.kind === "eca" ? "Circumstances, from the applicant" : "Note to course staff, from the applicant"}</h2>
+    {
+      r.message ? (
+        <p class="panel" style="white-space: pre-wrap">{r.message}</p>
+      ) : (
+        <p class="hint">{r.kind === "auto" ? "Automatic extensions don't need a reason." : "No note given."}</p>
+      )
+    }
+  </section>
 
   {
     r.kind !== "auto" && (
-      <section>
-        <h2>Attachments</h2>
-        {r.kind === "eca" && <p class="hint">Confidential: visible only to the student and the central team.</p>}
+      <section aria-labelledby="files-h">
+        <h2 id="files-h">Uploaded documents</h2>
+        {r.kind === "eca" && <p class="hint">Confidential: visible only to the applicant and the central team.</p>}
         {files.length === 0 ? (
           <p class="hint">None.</p>
         ) : (
@@ -110,7 +148,7 @@ const back = session?.kind === "central" ? "/central/" : "/";
             {files.map((f) => (
               <li>
                 <a href={`/attachments/${f.id}`}>{f.filename}</a>
-                <span class="hint">{Math.max(1, Math.round(f.size / 1024))} KB</span>
+                <span class="hint">{f.mime} · {Math.max(1, Math.round(f.size / 1024))} KB</span>
               </li>
             ))}
           </ul>
@@ -120,38 +158,62 @@ const back = session?.kind === "central" ? "/central/" : "/";
   }
 
   {
-    r.decidedBy && r.kind !== "auto" && (
-      <section>
-        <h2>Decision</h2>
-        <p class="panel">
-          <span class={`badge ${r.status}`}>{r.status}</span> by {r.decidedBy}
-          {r.decisionNote && <><br /><span style="white-space: pre-wrap">{r.decisionNote}</span></>}
-        </p>
+    r.kind !== "auto" && (
+      <section aria-labelledby="responses-h">
+        <h2 id="responses-h">Responses</h2>
+        {thread.length === 0 ? (
+          <p class="hint">No response yet.</p>
+        ) : (
+          <ol class="plain panel">
+            {thread.map((t) => (
+              <li>
+                <div>
+                  <span class={`badge ${t.status}`}>{STATUS_LABEL[t.status]}</span>{" "}
+                  <span class="hint">{t.author === "CENTRAL" ? "Central team" : t.author} · {t.createdAt} UTC</span>
+                  <p style="white-space: pre-wrap; margin: 0.3rem 0 0">{t.body}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
       </section>
     )
   }
 
   {
-    canDecide(session, r) && (
-      <section>
-        <h2>{r.status === "pending" ? "Decide this request" : "Change the decision"}</h2>
+    decider && (
+      <section aria-labelledby="decide-h">
+        <h2 id="decide-h">Respond to the applicant</h2>
         <form method="post" class="panel stack">
-          <fieldset>
-            <legend>Decision</legend>
-            <label class="check"><input type="radio" name="decision" value="approved" required checked={r.status === "approved"} /> <span>Approve: new due date {formatDue(r.newDueAt)}</span></label>
-            <label class="check"><input type="radio" name="decision" value="declined" checked={r.status === "declined"} /> <span>Decline: the original due date stands</span></label>
-          </fieldset>
           <div class="field">
-            <label for="note">Note to the student</label>
-            <p class="hint" id="note-hint">Required when declining: the procedure asks for reasons.</p>
-            <textarea id="note" name="note" aria-describedby="note-hint">{r.decisionNote}</textarea>
+            <label for="response">Your response (required)</label>
+            <p class="hint" id="response-hint">
+              The applicant sees this. You can't change the status without writing something. One word is
+              enough; the procedure asks for reasons when you deny (clause 24).
+            </p>
+            <textarea id="response" name="response" required aria-describedby="response-hint">{draft}</textarea>
           </div>
+          <fieldset>
+            <legend>Status</legend>
+            {DECISIONS.map((d) => (
+              <label class="check">
+                <input type="radio" name="decision" value={d} required checked={chosen ? chosen === d : r.status === d} />
+                <span>
+                  <strong>{ACTION[d]}</strong>
+                  {d === "approved" && `: new due date ${formatDue(r.newDueAt)}`}
+                  {d === "considering" && ": keep it open, e.g. while you ask for more information"}
+                  {d === "declined" && ": the original due date stands and the applicant can appeal"}
+                </span>
+              </label>
+            ))}
+          </fieldset>
           {error && <p class="error" role="alert">{error}</p>}
-          <div class="actions"><button>Save decision</button></div>
+          <div class="actions"><button>Send response and update status</button></div>
         </form>
       </section>
     )
   }
 
   {isOwner && r.status !== "approved" && <p><a href="/request/">Make another request</a></p>}
+  <p class="hint">Policy: <a href={LINKS.procedure}>Procedure: Student assessment (coursework)</a>.</p>
 </Layout>
