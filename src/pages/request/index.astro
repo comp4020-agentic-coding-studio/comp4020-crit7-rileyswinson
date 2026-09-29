@@ -1,0 +1,66 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { AUTO_MAX_DAYS, LINKS, QUOTES, SHORT_MAX_DAYS } from "../../lib/policy";
+import { getSession } from "../../lib/session";
+
+const session = getSession(Astro.cookies);
+if (session?.kind !== "user" || session.side !== "student") return Astro.redirect("/");
+---
+
+<Layout title="Submit an extension request">
+  <h1>Submit an extension request</h1>
+  <p class="lede">
+    Three routes, depending on how much time you need and whether the due date has passed.
+    Pick the smallest one that fits.
+  </p>
+
+  <div class="choices">
+    <a class="choice" href="/request/auto/">
+      <strong>Automatic Short Extension</strong>
+      <span>Less than 3 working days ({AUTO_MAX_DAYS} at most), before the due date.</span>
+      <span><b>You need:</b> the course and the assignment. Nothing else.</span>
+      <span>Granted automatically. You'll see your new due date straight away.</span>
+      <span class="who">Recorded with your course staff</span>
+    </a>
+    <a class="choice" href="/request/short/">
+      <strong>Short Extension</strong>
+      <span>Less than 10 working days ({SHORT_MAX_DAYS} at most), before the due date.</span>
+      <span>
+        <b>You need:</b> the course and assignment, a note to course staff, and supporting
+        documents (e.g. a medical certificate stating the dates you were unfit to study).
+      </span>
+      <span>No confidential medical detail. That belongs in an ECA.</span>
+      <span class="who">Decided by your course staff</span>
+    </a>
+    <a class="choice central" href="/request/eca/">
+      <strong>Extenuating Circumstances Application</strong>
+      <span>10 or more working days, or the due date has already passed.</span>
+      <span>
+        <b>You need:</b> a full account of your circumstances and independent documents that
+        substantiate it. Confidential medical information is fine here.
+      </span>
+      <span>Higher bar of proof than a short extension.</span>
+      <span class="who">Decided by the central team (DSAAS), not your course</span>
+    </a>
+  </div>
+
+  <details class="panel">
+    <summary>What ANU policy says about which route to use</summary>
+    <blockquote>
+      {QUOTES.cl12}
+      <cite>Procedure: Student assessment (coursework), clause 12. <a href={LINKS.procedure}>ANUP_004604</a></cite>
+    </blockquote>
+    <blockquote>
+      {QUOTES.cl13}
+      <cite>Clause 13. <a href={LINKS.procedure}>ANUP_004604</a></cite>
+    </blockquote>
+    <blockquote>
+      {QUOTES.cl14}
+      <cite>Clause 14. <a href={LINKS.procedure}>ANUP_004604</a></cite>
+    </blockquote>
+    <blockquote>
+      {QUOTES.cl20}
+      <cite>Clause 20. <a href={LINKS.procedure}>ANUP_004604</a></cite>
+    </blockquote>
+  </details>
+</Layout>

@@ -1,0 +1,164 @@
+---
+import AssignmentPicker from "../../components/AssignmentPicker.astro";
+import Layout from "../../layouts/Layout.astro";
+import { createRequest } from "../../lib/db";
+import { addWorkingDays } from "../../lib/dates";
+import { bus } from "../../lib/events";
+import { EAP_DEFAULT_DAYS, EAP_NOTE, LINKS, QUOTES, SHORT_MAX_DAYS } from "../../lib/policy";
+import { readFiles, readPick } from "../../lib/requests";
+import { getSession } from "../../lib/session";
+
+const session = getSession(Astro.cookies);
+if (session?.kind !== "user" || session.side !== "student") return Astro.redirect("/");
+const hasEap = session.user.hasEap;
+
+let error = "";
+let courseId: number | undefined;
+let assignmentId: number | undefined;
+let days = 3;
+let message = "";
+let eap = false;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  courseId = Number(form.get("courseId")) || undefined;
+  assignmentId = Number(form.get("assignmentId")) || undefined;
+  days = Number(form.get("days")) || days;
+  message = String(form.get("message") ?? "").trim().slice(0, 5000);
+  eap = hasEap && form.get("eap") === "1";
+
+  const pick = readPick(form, 1, SHORT_MAX_DAYS, false);
+  const files = await readFiles(form);
+  if (!pick.ok) error = pick.error;
+  else if (!files.ok) error = files.error;
+  else if (!message && !eap) error = "Write a note to your course staff explaining the request.";
+  else {
+    const row = createRequest(
+      {
+        kind: "short",
+        studentUid: session.uid,
+        assignmentId: pick.assignment.id,
+        workingDays: pick.days,
+        newDueAt: addWorkingDays(pick.assignment.dueAt, pick.days),
+        message,
+        eapShared: eap,
+        status: "pending",
+      },
+      files.files,
+    );
+    bus.emit("message", { id: row.id, kind: row.kind });
+    return Astro.redirect(`/requests/${row.id}/`, 303);
+  }
+  Astro.response.status = 400;
+}
+---
+
+<Layout title="Short Extension">
+  <p><a href="/request/">← All extension types</a></p>
+  <h1>Short Extension</h1>
+  <p class="lede">
+    Less than 10 working days, requested on or before the due date. <strong>Your course staff</strong> decide
+    it, not the central team.
+  </p>
+
+  <section class="callout staff" aria-labelledby="needed">
+    <h2 id="needed">What's needed</h2>
+    <ul>
+      <li>The <strong>course</strong>, the <strong>assignment</strong> and how many working days you need.</li>
+      <li>A <strong>note to your course staff</strong> saying why you couldn't complete the work on time.</li>
+      <li>
+        <strong>Supporting documentation</strong> so your claim can be verified. For illness, a certificate from
+        a registered health practitioner stating that you were unfit for study, and for which dates, is
+        enough for the period it covers. It doesn't need a diagnosis.
+      </li>
+    </ul>
+    <p>
+      Handled by your <strong>course staff</strong> (the convenor or their nominee). They're told of your
+      request and give you their decision here.
+    </p>
+  </section>
+
+  <section class="callout warn" aria-labelledby="no-medical">
+    <h2 id="no-medical">Don't upload confidential medical documents</h2>
+    <p>
+      Course staff see everything on this form. <strong>Don't upload confidential medical documentation</strong>
+      (diagnoses, specialist reports, test results, treatment details). A general statement from an authorised
+      provider that you couldn't work should be enough for the length of time on the certificate.
+    </p>
+    <p>
+      If your case depends on confidential detail, or needs 10 or more working days, submit an
+      <a href="/request/eca/">Extenuating Circumstances Application</a>. The central team handles those privately.
+    </p>
+  </section>
+
+  <form method="post" class="panel stack" enctype="multipart/form-data">
+    <AssignmentPicker kind="short" minDays={1} maxDays={SHORT_MAX_DAYS} defaultDays={days} courseId={courseId} assignmentId={assignmentId} days={days} />
+
+    {
+      hasEap ? (
+        <div class="field">
+          <span class="label" id="eap-label"><b>Education Access Plan</b></span>
+          <input type="hidden" name="eap" id="eap" value={eap ? "1" : "0"} />
+          <div class="actions">
+            <button type="button" id="share-eap" class="secondary" aria-pressed={eap ? "true" : "false"} aria-describedby="eap-help">
+              Share EAP
+            </button>
+          </div>
+          <p class="hint" id="eap-help">
+            Shares your EAP with the course convenor and sets a default {EAP_DEFAULT_DAYS} working day request.
+          </p>
+          <p class="callout ok" id="eap-note" role="status" hidden={!eap}>{EAP_NOTE}</p>
+        </div>
+      ) : (
+        <p class="hint">
+          Have an Education Access Plan? Tick <em>I have an EAP</em> under <a href="/profile/">My data</a>
+          and a <strong>Share EAP</strong> option will appear here.
+        </p>
+      )
+    }
+
+    <div class="field">
+      <label for="message">Note to your course staff</label>
+      <p class="hint" id="message-hint">What happened, when, and how it stopped you completing the work. Keep medical detail general.</p>
+      <textarea id="message" name="message" aria-describedby="message-hint" maxlength="5000">{message}</textarea>
+    </div>
+
+    <div class="field">
+      <label for="files">Supporting documents</label>
+      <p class="hint" id="files-hint">PDF, image or Word document. Up to 10 files, 10 MB total. No confidential medical documents.</p>
+      <input id="files" name="files" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.heic,.doc,.docx,.txt" aria-describedby="files-hint" />
+    </div>
+
+    {error && <p class="error" role="alert">{error}</p>}
+    <div class="actions"><button>Send to course staff</button></div>
+  </form>
+
+  <details class="panel">
+    <summary>The ANU policy behind this form</summary>
+    <blockquote>{QUOTES.cl12}<cite>Clause 12, <a href={LINKS.procedure}>Procedure: Student assessment (coursework)</a></cite></blockquote>
+    <blockquote>{QUOTES.cl15}<cite>Clause 15, <a href={LINKS.procedure}>ANUP_004604</a></cite></blockquote>
+    <blockquote>{QUOTES.cl19}<cite>Clause 19, <a href={LINKS.procedure}>ANUP_004604</a></cite></blockquote>
+    <blockquote>{QUOTES.cl21}<cite>Clause 21, <a href={LINKS.procedure}>ANUP_004604</a></cite></blockquote>
+    <blockquote>{QUOTES.cl20}<cite>Clause 20, <a href={LINKS.procedure}>ANUP_004604</a>; see the <a href={LINKS.disability}>Adjustments for students who disclose a disability procedure</a></cite></blockquote>
+  </details>
+</Layout>
+
+<script>
+  import { EAP_DEFAULT_DAYS } from "../../lib/policy";
+
+  const button = document.querySelector<HTMLButtonElement>("#share-eap");
+  const field = document.querySelector<HTMLInputElement>("#eap");
+  const note = document.querySelector<HTMLElement>("#eap-note");
+  const days = document.querySelector<HTMLInputElement>("#days");
+  button?.addEventListener("click", () => {
+    const on = button.getAttribute("aria-pressed") !== "true";
+    button.setAttribute("aria-pressed", String(on));
+    button.textContent = on ? "EAP shared ✓" : "Share EAP";
+    if (field) field.value = on ? "1" : "0";
+    if (note) note.hidden = !on;
+    if (on && days) {
+      days.value = String(EAP_DEFAULT_DAYS);
+      days.dispatchEvent(new Event("input"));
+    }
+  });
+</script>

@@ -1,0 +1,72 @@
+---
+import AssignmentPicker from "../../components/AssignmentPicker.astro";
+import Layout from "../../layouts/Layout.astro";
+import { createRequest, hasAutoExtension } from "../../lib/db";
+import { addWorkingDays } from "../../lib/dates";
+import { bus } from "../../lib/events";
+import { AUTO_MAX_DAYS, LINKS } from "../../lib/policy";
+import { readPick } from "../../lib/requests";
+import { getSession } from "../../lib/session";
+
+const session = getSession(Astro.cookies);
+if (session?.kind !== "user" || session.side !== "student") return Astro.redirect("/");
+
+let error = "";
+let courseId: number | undefined;
+let assignmentId: number | undefined;
+let days = AUTO_MAX_DAYS;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  courseId = Number(form.get("courseId")) || undefined;
+  assignmentId = Number(form.get("assignmentId")) || undefined;
+  days = Number(form.get("days")) || AUTO_MAX_DAYS;
+  const pick = readPick(form, 1, AUTO_MAX_DAYS, false);
+  if (!pick.ok) {
+    error = pick.error;
+  } else if (hasAutoExtension(session.uid, pick.assignment.id)) {
+    error = "You've already had an automatic extension on this assignment. Use a Short Extension if you need more time.";
+  } else {
+    const row = createRequest({
+      kind: "auto",
+      studentUid: session.uid,
+      assignmentId: pick.assignment.id,
+      workingDays: pick.days,
+      newDueAt: addWorkingDays(pick.assignment.dueAt, pick.days),
+      status: "approved",
+      decidedBy: "automatic",
+      decisionNote: "Granted automatically.",
+    });
+    bus.emit("message", { id: row.id, kind: row.kind });
+    return Astro.redirect(`/requests/${row.id}/`, 303);
+  }
+  Astro.response.status = 400;
+}
+---
+
+<Layout title="Automatic Short Extension">
+  <p><a href="/request/">← All extension types</a></p>
+  <h1>Automatic Short Extension</h1>
+  <p class="lede">Less than 3 working days. Granted as soon as you submit.</p>
+
+  <section class="callout staff" aria-labelledby="needed">
+    <h2 id="needed">What's needed</h2>
+    <ul>
+      <li>The <strong>course</strong> and the <strong>assignment</strong>.</li>
+      <li>The request must be made <strong>on or before the due date</strong>.</li>
+      <li>One automatic extension per assignment.</li>
+      <li>No reason and no documents.</li>
+    </ul>
+    <p>
+      It's recorded with your <strong>course staff</strong>, who can see it on their side. Need longer?
+      Use a <a href="/request/short/">Short Extension</a> (under 10 working days) or an
+      <a href="/request/eca/">ECA</a>. See the <a href={LINKS.procedure}>Student assessment (coursework) procedure</a>.
+    </p>
+  </section>
+
+  <form method="post" class="panel stack">
+    <AssignmentPicker kind="auto" minDays={1} maxDays={AUTO_MAX_DAYS} defaultDays={AUTO_MAX_DAYS} courseId={courseId} assignmentId={assignmentId} days={days} />
+    {error && <p class="error" role="alert">{error}</p>}
+    <div class="actions"><button>Grant my extension</button></div>
+  </form>
+</Layout>

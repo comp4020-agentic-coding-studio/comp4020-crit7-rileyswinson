@@ -1,0 +1,167 @@
+---
+import AssignmentPicker from "../../components/AssignmentPicker.astro";
+import Layout from "../../layouts/Layout.astro";
+import { createRequest } from "../../lib/db";
+import { addWorkingDays } from "../../lib/dates";
+import { bus } from "../../lib/events";
+import { LINKS, QUOTES } from "../../lib/policy";
+import { readFiles, readPick } from "../../lib/requests";
+import { getSession } from "../../lib/session";
+
+const session = getSession(Astro.cookies);
+if (session?.kind !== "user" || session.side !== "student") return Astro.redirect("/");
+
+const CIRCUMSTANCES = [
+  "Serious illness or injury",
+  "Bereavement or serious illness of someone close to me",
+  "Hospitalisation",
+  "Unforeseen hardship or trauma",
+  "Other exceptional circumstances beyond my control",
+];
+
+let error = "";
+let courseId: number | undefined;
+let assignmentId: number | undefined;
+let days = 10;
+let circumstance = "";
+let message = "";
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  courseId = Number(form.get("courseId")) || undefined;
+  assignmentId = Number(form.get("assignmentId")) || undefined;
+  days = Number(form.get("days")) || days;
+  circumstance = String(form.get("circumstance") ?? "");
+  message = String(form.get("message") ?? "").trim().slice(0, 10000);
+
+  const pick = readPick(form, 1, 60, true);
+  const files = await readFiles(form);
+  if (!pick.ok) error = pick.error;
+  else if (!files.ok) error = files.error;
+  else if (!CIRCUMSTANCES.includes(circumstance)) error = "Choose the kind of circumstance.";
+  else if (!message) error = "Describe your circumstances and how they affected this assessment.";
+  else if (files.files.length === 0) error = "Attach independent supporting documents. An ECA without them is incomplete.";
+  else if (!form.has("declare")) error = "Confirm the declaration.";
+  else {
+    const row = createRequest(
+      {
+        kind: "eca",
+        studentUid: session.uid,
+        assignmentId: pick.assignment.id,
+        workingDays: pick.days,
+        newDueAt: addWorkingDays(pick.assignment.dueAt, pick.days),
+        circumstance,
+        message,
+        status: "pending",
+      },
+      files.files,
+    );
+    bus.emit("message", { id: row.id, kind: row.kind });
+    return Astro.redirect(`/requests/${row.id}/`, 303);
+  }
+  Astro.response.status = 400;
+}
+---
+
+<Layout title="Extenuating Circumstances Application">
+  <p><a href="/request/">← All extension types</a></p>
+  <h1>Extenuating Circumstances Application</h1>
+  <p class="lede">
+    For 10 or more working days, or when the due date has passed. Handled by the
+    <strong>central team</strong> (the Division of Student Administration and Academic Services), not your
+    course staff.
+  </p>
+
+  <section class="callout central" aria-labelledby="central">
+    <h2 id="central">Who sees this</h2>
+    <p>
+      ECAs go to the <strong>central team</strong> only. Your course convenor never sees your documents; the
+      central team may talk to your College about the outcome.
+    </p>
+    <p>
+      <strong>You can include confidential medical information here</strong>, such as diagnoses, specialist
+      letters and hospital records.
+    </p>
+  </section>
+
+  <section class="callout warn" aria-labelledby="bar">
+    <h2 id="bar">A higher bar than a short extension</h2>
+    <p>
+      A short extension can rest on a general certificate. An ECA needs <strong>independent supporting
+      documents that substantiate the application</strong>: evidence of what happened, when, and how severely
+      it affected this assessment. Incomplete applications are rejected.
+    </p>
+    <blockquote>
+      {QUOTES.cl28}
+      <cite>Clause 28, <a href={LINKS.procedure}>Procedure: Student assessment (coursework)</a></cite>
+    </blockquote>
+    <p><strong>Colds, mild illness and ordinary stress don't qualify.</strong> From the procedure:</p>
+    <blockquote>
+      {QUOTES.cl31Intro}
+      <ul>
+        {QUOTES.cl31.map((q) => <li>{q}</li>)}
+      </ul>
+      <cite>Clause 31 (excerpt), <a href={LINKS.procedure}>ANUP_004604</a>. Clause 36 of the <a href={LINKS.policy}>Student assessment (coursework) policy</a> lists more.</cite>
+    </blockquote>
+    <blockquote>
+      {QUOTES.cl27}
+      <cite>Clause 27, <a href={LINKS.procedure}>ANUP_004604</a></cite>
+    </blockquote>
+  </section>
+
+  <form method="post" class="panel stack" enctype="multipart/form-data">
+    <AssignmentPicker kind="eca" minDays={1} maxDays={60} defaultDays={days} courseId={courseId} assignmentId={assignmentId} days={days} />
+    <p class="hint" id="eca-route-hint" hidden>
+      Under 10 working days and the due date hasn't passed? A <a href="/request/short/">Short Extension</a> is
+      probably the right route.
+    </p>
+
+    <div class="field">
+      <label for="circumstance">Kind of circumstance</label>
+      <select id="circumstance" name="circumstance" required>
+        <option value="">Choose…</option>
+        {CIRCUMSTANCES.map((c) => <option selected={c === circumstance}>{c}</option>)}
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="message">Your circumstances</label>
+      <p class="hint" id="message-hint">
+        What happened, when it started and ended, and how it stopped you completing this assessment. Include
+        medical detail if it's relevant.
+      </p>
+      <textarea id="message" name="message" required aria-describedby="message-hint" maxlength="10000">{message}</textarea>
+    </div>
+
+    <div class="field">
+      <label for="files">Independent supporting documents (required)</label>
+      <p class="hint" id="files-hint">
+        E.g. a detailed medical certificate or specialist letter, hospital records, a death notice, a police
+        report. PDF, image or Word document, up to 10 files, 10 MB total.
+      </p>
+      <input id="files" name="files" type="file" multiple required accept=".pdf,.png,.jpg,.jpeg,.heic,.doc,.docx,.txt" aria-describedby="files-hint" />
+    </div>
+
+    <label class="check">
+      <input type="checkbox" name="declare" required />
+      <span>
+        I declare the information and documents I've provided are true and complete. I understand the central
+        team may verify them and may reject an incomplete application.
+      </span>
+    </label>
+
+    {error && <p class="error" role="alert">{error}</p>}
+    <div class="actions"><button>Submit to the central team</button></div>
+  </form>
+</Layout>
+
+<script>
+  import { isPast } from "../../lib/dates";
+
+  // Nudge toward a Short Extension when that's the better fit (clause 12/13).
+  const hint = document.querySelector<HTMLElement>("#eca-route-hint");
+  document.addEventListener("picker:change", (e) => {
+    const { due, days } = (e as CustomEvent<{ due?: string; days: number }>).detail;
+    if (hint) hint.hidden = !(due && days < 10 && !isPast(due));
+  });
+</script>

@@ -170,8 +170,8 @@ const pending = incoming.filter((r) => r.status === "pending");
   const banner = document.querySelector<HTMLElement>("#live");
   if (banner) {
     const source = new EventSource("/api/events");
-    source.addEventListener("message", () => {
-      banner.hidden = false;
+    source.addEventListener("message", (event) => {
+      if (JSON.parse(event.data).kind !== "eca") banner.hidden = false;
     });
   }
 </script>

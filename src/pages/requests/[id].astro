@@ -1,0 +1,157 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { decideRequest, getRequest, listAttachments } from "../../lib/db";
+import { formatDue } from "../../lib/dates";
+import { EAP_NOTE, LINKS } from "../../lib/policy";
+import { canDecide, canView, getSession } from "../../lib/session";
+
+const session = getSession(Astro.cookies);
+let r = getRequest(Number(Astro.params.id));
+if (!r || !canView(session, r)) return new Response("Not found", { status: 404 });
+
+let error = "";
+if (Astro.request.method === "POST" && canDecide(session, r)) {
+  const form = await Astro.request.formData();
+  const decision = form.get("decision");
+  const note = String(form.get("note") ?? "").trim().slice(0, 5000);
+  if (decision !== "approved" && decision !== "declined") error = "Choose approve or decline.";
+  else if (decision === "declined" && !note) error = "Give the student a reason when declining (clause 24).";
+  else {
+    decideRequest(r.id, decision, note, session!.uid);
+    return Astro.redirect(`/requests/${r.id}/`, 303);
+  }
+  Astro.response.status = 400;
+}
+r = getRequest(r.id)!;
+
+const files = listAttachments(r.id);
+const isOwner = session?.uid === r.studentUid;
+const TITLE = { auto: "Automatic Short Extension", short: "Short Extension", eca: "Extenuating Circumstances Application" };
+const HANDLER = {
+  auto: "Granted automatically; recorded with your course staff",
+  short: `Course staff for ${r.courseCode}`,
+  eca: "The central team (DSAAS)",
+};
+const back = session?.kind === "central" ? "/central/" : "/";
+---
+
+<Layout title={`${TITLE[r.kind]} #${r.id}`}>
+  <p><a href={back}>← Back</a></p>
+  <h1>{TITLE[r.kind]} <span class="hint">#{r.id}</span></h1>
+
+  {
+    r.status === "approved" && (
+      <div class="callout ok" role="status">
+        <p>
+          <strong>{r.kind === "auto" ? "Granted." : "Approved."}</strong> Your new due date is
+        </p>
+        <p class="big-date">{formatDue(r.newDueAt)}</p>
+      </div>
+    )
+  }
+  {
+    r.status === "pending" && (
+      <div class="callout warn" role="status">
+        <p>
+          <strong>Waiting for a decision</strong> from {r.kind === "eca" ? "the central team" : "your course staff"}.
+          The requested new due date is <strong>{formatDue(r.newDueAt)}</strong>.
+          {r.kind === "eca"
+            ? " The procedure says you'll be told within five working days of a decision being made (clause 35)."
+            : " The procedure says you'll be told within three working days of the decision (clause 21)."}
+        </p>
+      </div>
+    )
+  }
+  {
+    r.status === "declined" && (
+      <div class="callout bad" role="status">
+        <p>
+          <strong>Declined.</strong> The original due date of {formatDue(r.dueAt)} stands. You can appeal under the
+          process in the <a href={LINKS.procedure}>procedure</a> (clause 25).
+        </p>
+      </div>
+    )
+  }
+
+  <section class="panel">
+    <dl class="kv">
+      <dt>Student</dt><dd>{r.studentUid}</dd>
+      <dt>Course</dt><dd>{r.courseCode}: {r.courseName}</dd>
+      <dt>Assignment</dt><dd>{r.assignmentName}</dd>
+      <dt>Original due</dt><dd>{formatDue(r.dueAt)}</dd>
+      <dt>Extension</dt><dd>{r.workingDays} working day{r.workingDays === 1 ? "" : "s"}</dd>
+      <dt>New due</dt><dd>{formatDue(r.newDueAt)}</dd>
+      <dt>Handled by</dt><dd>{HANDLER[r.kind]}</dd>
+      <dt>Submitted</dt><dd>{r.createdAt} UTC</dd>
+      {r.circumstance && (<><dt>Circumstance</dt><dd>{r.circumstance}</dd></>)}
+    </dl>
+  </section>
+
+  {r.eapShared && <p class="callout ok"><strong>EAP shared.</strong> {EAP_NOTE}</p>}
+
+  {
+    r.message && (
+      <section>
+        <h2>{r.kind === "eca" ? "Circumstances" : "Note to course staff"}</h2>
+        <p class="panel" style="white-space: pre-wrap">{r.message}</p>
+      </section>
+    )
+  }
+
+  {
+    r.kind !== "auto" && (
+      <section>
+        <h2>Attachments</h2>
+        {r.kind === "eca" && <p class="hint">Confidential: visible only to the student and the central team.</p>}
+        {files.length === 0 ? (
+          <p class="hint">None.</p>
+        ) : (
+          <ul class="plain panel">
+            {files.map((f) => (
+              <li>
+                <a href={`/attachments/${f.id}`}>{f.filename}</a>
+                <span class="hint">{Math.max(1, Math.round(f.size / 1024))} KB</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    )
+  }
+
+  {
+    r.decidedBy && r.kind !== "auto" && (
+      <section>
+        <h2>Decision</h2>
+        <p class="panel">
+          <span class={`badge ${r.status}`}>{r.status}</span> by {r.decidedBy}
+          {r.decisionNote && <><br /><span style="white-space: pre-wrap">{r.decisionNote}</span></>}
+        </p>
+      </section>
+    )
+  }
+
+  {
+    canDecide(session, r) && (
+      <section>
+        <h2>{r.status === "pending" ? "Decide this request" : "Change the decision"}</h2>
+        <form method="post" class="panel stack">
+          <fieldset>
+            <legend>Decision</legend>
+            <label class="check"><input type="radio" name="decision" value="approved" required checked={r.status === "approved"} /> <span>Approve: new due date {formatDue(r.newDueAt)}</span></label>
+            <label class="check"><input type="radio" name="decision" value="declined" checked={r.status === "declined"} /> <span>Decline: the original due date stands</span></label>
+          </fieldset>
+          <div class="field">
+            <label for="note">Note to the student</label>
+            <p class="hint" id="note-hint">Required when declining: the procedure asks for reasons.</p>
+            <textarea id="note" name="note" aria-describedby="note-hint">{r.decisionNote}</textarea>
+          </div>
+          {error && <p class="error" role="alert">{error}</p>}
+          <div class="actions"><button>Save decision</button></div>
+        </form>
+      </section>
+    )
+  }
+
+  {isOwner && r.status !== "approved" && <p><a href="/request/">Make another request</a></p>}
+</Layout>

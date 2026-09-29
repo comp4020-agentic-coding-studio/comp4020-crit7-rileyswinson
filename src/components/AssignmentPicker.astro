@@ -1,0 +1,134 @@
+---
+import { listAssignments, listCourses } from "../lib/db";
+import { addWorkingDays, formatDue, isPast, nowLocal } from "../lib/dates";
+
+// Course → assignment → working days, with the resulting due date shown as
+// you choose. Without JavaScript every assignment is listed under its
+// course's heading and the server works out the date on submit.
+interface Props {
+  kind: "auto" | "short" | "eca";
+  minDays: number;
+  maxDays: number;
+  defaultDays: number;
+  courseId?: number;
+  assignmentId?: number;
+  days?: number;
+}
+
+const { kind, minDays, maxDays, defaultDays, courseId, assignmentId, days = defaultDays } = Astro.props;
+const now = nowLocal();
+const courses = listCourses();
+const byCourse = courses.map((c) => ({ course: c, items: listAssignments(c.id) }));
+const blockPast = kind !== "eca";
+const selected = byCourse.flatMap((g) => g.items).find((a) => a.id === assignmentId);
+const preview = selected ? formatDue(addWorkingDays(selected.dueAt, days)) : "";
+---
+
+<div class="field-row" data-picker data-kind={kind}>
+  <div class="field">
+    <label for="courseId">Course</label>
+    <select id="courseId" name="courseId" required>
+      <option value="">Choose a course…</option>
+      {courses.map((c) => <option value={c.id} selected={c.id === courseId}>{c.code}: {c.name}</option>)}
+    </select>
+  </div>
+  <div class="field">
+    <label for="assignmentId">Assignment</label>
+    <select id="assignmentId" name="assignmentId" required>
+      <option value="">Choose an assignment…</option>
+      {
+        byCourse.map(({ course, items }) =>
+          items.length > 0 && (
+            <optgroup label={course.code} data-course={course.id}>
+              {items.map((a) => {
+                const past = isPast(a.dueAt, now);
+                return (
+                  <option
+                    value={a.id}
+                    data-due={a.dueAt}
+                    selected={a.id === assignmentId}
+                    disabled={blockPast && past}
+                  >
+                    {a.name}, due {formatDue(a.dueAt)}
+                    {past ? (blockPast ? " (past due: use an ECA)" : " (past due)") : ""}
+                  </option>
+                );
+              })}
+            </optgroup>
+          ),
+        )
+      }
+    </select>
+  </div>
+</div>
+
+{courses.length === 0 && <p class="callout warn">No courses have been set up yet. Course staff add them from the staff side.</p>}
+
+<div class="field">
+  <label for="days">Extension length (working days)</label>
+  <p class="hint" id="days-hint">
+    {minDays} to {maxDays} working days. Weekends don't count; public holidays aren't modelled.
+  </p>
+  {
+    kind === "auto" ? (
+      <select id="days" name="days" aria-describedby="days-hint">
+        {Array.from({ length: maxDays - minDays + 1 }, (_, i) => minDays + i).map((n) => (
+          <option value={n} selected={n === days}>
+            {n} working day{n === 1 ? "" : "s"}
+          </option>
+        ))}
+      </select>
+    ) : (
+      <input id="days" name="days" type="number" inputmode="numeric" min={minDays} max={maxDays} value={days} required aria-describedby="days-hint" />
+    )
+  }
+</div>
+
+<p class="panel" aria-live="polite">
+  <span class="hint">{kind === "auto" ? "Your new due date will be" : "Requested new due date"}</span><br />
+  <output id="new-date" class="big-date" for="assignmentId days">{preview || "Choose an assignment"}</output>
+</p>
+
+<script>
+  import { addWorkingDays, formatDue } from "../lib/dates";
+
+  const course = document.querySelector<HTMLSelectElement>("#courseId")!;
+  const assignment = document.querySelector<HTMLSelectElement>("#assignmentId")!;
+  const days = document.querySelector<HTMLInputElement | HTMLSelectElement>("#days")!;
+  const out = document.querySelector<HTMLOutputElement>("#new-date")!;
+
+  // Only the chosen course's assignments are offered.
+  function filter() {
+    for (const group of assignment.querySelectorAll("optgroup")) {
+      const match = group.dataset.course === course.value;
+      group.hidden = !match;
+      group.disabled = !match;
+    }
+    const chosen = assignment.selectedOptions[0];
+    if (chosen?.parentElement instanceof HTMLOptGroupElement && chosen.parentElement.disabled) {
+      assignment.value = "";
+    }
+  }
+
+  function update() {
+    const due = assignment.selectedOptions[0]?.dataset.due;
+    const n = Number(days.value);
+    out.value = due && n > 0 ? formatDue(addWorkingDays(due, n)) : "Choose an assignment";
+    document.dispatchEvent(new CustomEvent("picker:change", { detail: { due, days: n } }));
+  }
+
+  // Picking an assignment first fills in its course.
+  assignment.addEventListener("change", () => {
+    const group = assignment.selectedOptions[0]?.parentElement;
+    if (group instanceof HTMLOptGroupElement && group.dataset.course) course.value = group.dataset.course;
+    update();
+  });
+  course.addEventListener("change", () => {
+    filter();
+    update();
+  });
+  days.addEventListener("input", update);
+  days.addEventListener("change", update);
+  filter();
+  update();
+</script>
