@@ -17,7 +17,22 @@ decides it, and which clause of the ANU procedure it rests on:
   confidential medical evidence, and quotes the procedure's higher bar,
   including that colds and mild illness don't qualify.
 
-Course staff create courses, enter assignments and due dates by hand, and add
+**Exams** are split the way ANU splits them: centrally run exams in the exam
+block can only go through an ECA, while exams a course, school or college runs
+itself go through the normal extensions. Other alternative coursework
+arrangements are left to the student and convenor to discuss.
+
+Course staff (for short extensions) and `CENTRAL` (for ECAs) open each request
+on its own page. There they see everything the applicant sent and whether the
+applicant says they have an EAP, and then **Accept**, **Consider** or **Deny**
+it. The status can't change without a written response to the applicant, even
+a one-word one. A denial puts an **Appeal** button beside it on the student's
+homepage. Course extensions are appealable only alongside final course grades,
+while a denied ECA points to the ANU appeal form, which is due within 10
+working days of the result.
+
+Course staff create courses, enter assignments, due dates and assessment types
+by hand, and add
 colleagues by UID. Anyone added that way sees the course when they switch to
 the staff side. Ticking "I have an EAP" adds a **Share EAP** button to the
 short extension form: a default 5 working day request, with a note that the
@@ -49,7 +64,10 @@ here means:
 What the tests in `spec/crit7.test.ts` enforce: roles persist across logins,
 the automatic extension is granted and dated correctly, past-due short
 requests are refused, short requests (with attachments and a shared EAP) reach
-course staff and persist, ECAs reach `CENTRAL` and never course staff, added
+course staff and persist, ECAs reach `CENTRAL` and never course staff, no
+status changes without a written response, denials show an Appeal button
+leading to the right appeal message, centrally run exams are refused as short
+extensions while course-run exams aren't, added
 staff UIDs see their course, the cold/mild-illness exclusion is quoted, and
 every signed-in page passes the axe accessibility floor.
 

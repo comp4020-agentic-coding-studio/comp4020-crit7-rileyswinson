@@ -615,13 +615,25 @@ dl.kv dd {
   color: var(--ok);
 }
 
-ul.plain {
+ul.plain,
+ol.plain {
   list-style: none;
   padding: 0;
   margin: 0;
 }
 
-ul.plain li {
+ul.plain.panel,
+ol.plain.panel {
+  padding: 0.25rem clamp(1rem, 3vw, 1.5rem);
+}
+
+ul.plain li:last-child,
+ol.plain li:last-child {
+  border-bottom: none;
+}
+
+ul.plain li,
+ol.plain li {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
