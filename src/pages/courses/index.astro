@@ -1,0 +1,69 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { courseCodeTaken, coursesForStaff, createCourse } from "../../lib/db";
+import { getSession } from "../../lib/session";
+
+const session = getSession(Astro.cookies);
+if (session?.kind !== "user" || session.side !== "staff") return Astro.redirect("/");
+
+let error = "";
+let code = "";
+let name = "";
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  code = String(form.get("code") ?? "").trim().toUpperCase();
+  name = String(form.get("name") ?? "").trim();
+  if (!/^[A-Z]{4}\d{4}$/.test(code)) {
+    error = "Course codes are four letters and four digits, e.g. COMP4020.";
+  } else if (!name) {
+    error = "Give the course a name.";
+  } else if (courseCodeTaken(code)) {
+    error = `${code} already exists. Ask one of its staff to add your UID.`;
+  } else {
+    const course = createCourse(code, name.slice(0, 200), session.uid);
+    return Astro.redirect(`/courses/${course.id}/`, 303);
+  }
+  Astro.response.status = 400;
+}
+
+const mine = coursesForStaff(session.uid);
+---
+
+<Layout title="My courses">
+  <h1>My courses</h1>
+  <p class="lede">
+    Courses where your UID is listed as staff. Anyone added as staff on a course sees it
+    here once they switch to the staff side.
+  </p>
+
+  {
+    mine.length === 0 ? (
+      <p class="panel">You aren't staff on any course yet. Create one below, or ask a colleague to add {session.uid}.</p>
+    ) : (
+      <div class="choices">
+        {mine.map((c) => (
+          <a class="choice" href={`/courses/${c.id}/`}>
+            <strong>{c.code}</strong>
+            <span>{c.name}</span>
+          </a>
+        ))}
+      </div>
+    )
+  }
+
+  <h2>Create a course</h2>
+  <form method="post" class="panel stack">
+    <div class="field-row">
+      <div class="field">
+        <label for="code">Course code</label>
+        <input id="code" name="code" required placeholder="COMP4020" value={code} autocapitalize="characters" />
+      </div>
+      <div class="field">
+        <label for="name">Course name</label>
+        <input id="name" name="name" required placeholder="Agentic Coding Studio" value={name} />
+      </div>
+    </div>
+    {error && <p class="error" role="alert">{error}</p>}
+    <div class="actions"><button>Create course</button></div>
+  </form>
+</Layout>

@@ -1,0 +1,156 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import {
+  addAssignment,
+  addStaff,
+  deleteAssignment,
+  getAssignment,
+  getCourse,
+  isCourseStaff,
+  listAssignments,
+  listStaff,
+  removeStaff,
+  updateAssignment,
+} from "../../lib/db";
+import { formatDue } from "../../lib/dates";
+import { getSession, normaliseUid } from "../../lib/session";
+
+const session = getSession(Astro.cookies);
+if (session?.kind !== "user" || session.side !== "staff") return Astro.redirect("/");
+
+const course = getCourse(Number(Astro.params.id));
+if (!course || !isCourseStaff(course.id, session.uid)) {
+  return new Response("Not found", { status: 404 });
+}
+
+const DUE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+let error = "";
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const action = String(form.get("action") ?? "");
+  const name = String(form.get("name") ?? "").trim().slice(0, 200);
+  const dueAt = String(form.get("dueAt") ?? "");
+  const assignment = getAssignment(Number(form.get("assignmentId")));
+  const ownAssignment = assignment?.courseId === course.id;
+
+  if (action === "add-assignment" || action === "edit-assignment") {
+    if (!name) error = "Give the assignment a name.";
+    else if (!DUE.test(dueAt)) error = "Pick a due date and time.";
+    else if (action === "add-assignment") addAssignment(course.id, name, dueAt);
+    else if (ownAssignment) updateAssignment(assignment.id, name, dueAt);
+  } else if (action === "delete-assignment" && ownAssignment) {
+    deleteAssignment(assignment.id);
+  } else if (action === "add-staff") {
+    const uid = normaliseUid(String(form.get("uid") ?? ""));
+    if (!uid || uid === "CENTRAL") error = "Enter a UID like u1234567.";
+    else addStaff(course.id, uid);
+  } else if (action === "remove-staff") {
+    const uid = String(form.get("uid") ?? "");
+    if (uid === session.uid) error = "You can't remove yourself. Ask another staff member to.";
+    else removeStaff(course.id, uid);
+  }
+
+  if (!error) return Astro.redirect(`/courses/${course.id}/`, 303);
+  Astro.response.status = 400;
+}
+
+const items = listAssignments(course.id);
+const staff = listStaff(course.id);
+---
+
+<Layout title={course.code}>
+  <p><a href="/courses/">← My courses</a></p>
+  <h1>{course.code} <span class="hint">{course.name}</span></h1>
+
+  {error && <p class="callout bad" role="alert">{error}</p>}
+
+  <h2>Assignments and due dates</h2>
+  <p class="hint">Times are Canberra time. Students pick from this list when they ask for an extension.</p>
+  {
+    items.length === 0 ? (
+      <p class="panel">No assignments yet.</p>
+    ) : (
+      <ul class="plain panel">
+        {items.map((a) => (
+          <li>
+            <details>
+              <summary>
+                {a.name}, due {formatDue(a.dueAt)}
+              </summary>
+              <form method="post" class="stack" style="margin-top:0.75rem">
+                <input type="hidden" name="action" value="edit-assignment" />
+                <input type="hidden" name="assignmentId" value={a.id} />
+                <div class="field-row">
+                  <div class="field">
+                    <label for={`name-${a.id}`}>Name</label>
+                    <input id={`name-${a.id}`} name="name" required value={a.name} />
+                  </div>
+                  <div class="field">
+                    <label for={`due-${a.id}`}>Due</label>
+                    <input id={`due-${a.id}`} name="dueAt" type="datetime-local" required value={a.dueAt} />
+                  </div>
+                </div>
+                <div class="actions">
+                  <button>Save</button>
+                  <button class="danger" name="action" value="delete-assignment" formnovalidate>
+                    Delete
+                  </button>
+                </div>
+              </form>
+            </details>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  <form method="post" class="panel stack">
+    <input type="hidden" name="action" value="add-assignment" />
+    <h3>Add an assignment</h3>
+    <div class="field-row">
+      <div class="field">
+        <label for="new-name">Assignment name</label>
+        <input id="new-name" name="name" required placeholder="Assignment 1" />
+      </div>
+      <div class="field">
+        <label for="new-due">Due date and time</label>
+        <input id="new-due" name="dueAt" type="datetime-local" required />
+      </div>
+    </div>
+    <div class="actions"><button>Add assignment</button></div>
+  </form>
+
+  <h2>Course staff</h2>
+  <p class="hint">
+    Anyone with a UID listed here sees this course, and decides its short extensions, when
+    they switch to the staff side. They don't need an account yet.
+  </p>
+  <ul class="plain panel">
+    {
+      staff.map((uid) => (
+        <li>
+          <span>
+            {uid}
+            {uid === session.uid && <span class="hint"> (you)</span>}
+          </span>
+          {uid !== session.uid && (
+            <form method="post" class="inline">
+              <input type="hidden" name="action" value="remove-staff" />
+              <input type="hidden" name="uid" value={uid} />
+              <button class="secondary" aria-label={`Remove ${uid}`}>Remove</button>
+            </form>
+          )}
+        </li>
+      ))
+    }
+  </ul>
+  <form method="post" class="panel stack">
+    <input type="hidden" name="action" value="add-staff" />
+    <div class="field">
+      <label for="staff-uid">Add course staff by UID</label>
+      <input id="staff-uid" name="uid" required placeholder="u1234567" autocapitalize="none" />
+    </div>
+    <div class="actions"><button>Add staff</button></div>
+  </form>
+</Layout>
